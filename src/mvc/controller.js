@@ -10,12 +10,7 @@ module.exports = class {
     }
 
     init() {
-        if (!localStorage.getItem('oneList') && !localStorage.getItem('secondList')) {
-            this.friends();
-        } else {
-            this.storageInit();
-        }
-        this.user();
+        this.actualityData();
         this.dnd(Array.from(document.querySelectorAll('.friends__list')));
         this.addToList();
         this.filterInit();
@@ -105,26 +100,95 @@ module.exports = class {
         const saveBtn = document.querySelector('#save');
         saveBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            localStorage.setItem('oneList', JSON.stringify(document.querySelector('.lists-friends__left .friends__list').innerHTML.trim()))
-            localStorage.setItem('secondList', JSON.stringify(document.querySelector('.lists-friends__right .friends__list').innerHTML.trim()))
+
+            if (window.localStorage) {
+                alert('Ваши списки успешно сохранены!');
+                let leftSideItems = this.saveData('.lists-friends__left .friends__item', 'friend');
+                let rightSideItems = this.saveData('.lists-friends__right .friends__item', 'friend');
+                let [user] = this.saveData('.user', 'user');
+                
+                localStorage.setItem('oneList', JSON.stringify(leftSideItems));
+                localStorage.setItem('secondList', JSON.stringify(rightSideItems));
+                localStorage.setItem('user', JSON.stringify(user));
+            } else {
+                alert('К сожелению ваш браузер не поддерживает сохранение');
+            }
         })
     }
 
-    storageInit() {
-        document.querySelector('.lists-friends__left .friends__list').innerHTML = JSON.parse(localStorage.getItem('oneList'));
-        document.querySelector('.lists-friends__right .friends__list').innerHTML = JSON.parse(localStorage.getItem('secondList'));
+    saveData(selector, type) {
+        let data = Array.from(document.querySelectorAll(selector)).map(item => {
+            let user = {};
+
+            if (type === 'friend') {
+                user.id = item.querySelector(`.${type}`).dataset.id;
+            }
+
+            user.photo_100 = item.querySelector(`.${type}__img`).src;
+            [user.first_name, user.last_name] = item.querySelector(`.${type}__name`).textContent.split(' ');
+
+            return user;
+        });
+
+        return data;
     }
 
-    async friends() {
-        const html = this.view.render('item', await this.model.friends);
+    async actualityData() {
+        let vkList;
+        let me;
 
-        document.querySelector('#oneList').innerHTML = html;
+        try {
+            vkList = await this.model.friends;
+            me = await this.model.user;
+        } catch(e) {
+            console.error('Сервер Вконтакте недоступен');
+        }
+
+        if (localStorage.getItem('oneList') && localStorage.getItem('secondList')) {
+            let storage = this.model.storage;
+            let storageList = storage.leftList.concat(storage.rightList).sort((firstItem, secondItem) => firstItem.id - secondItem.id);
+            if (vkList) {
+                this.compareId(storageList, vkList) ? this.storageInit(storage) : this.renderFriends(vkList, '#oneList');
+            } else {
+                this.storageInit(storage);
+            }
+
+            return;
+        }
+  
+        this.renderUser(me, '#user');
+        this.renderFriends(vkList, '#oneList');
     }
 
-    async user() {
-        const html = this.view.render('user', await this.model.user);
+    compareId(oneList, secondList) {
+        if (oneList.length !== secondList.length) {
+            return false;
+        }
 
-        document.querySelector('#user').innerHTML = html;
+        for (let i = 0; i < oneList.length; i++) {
+            if (+oneList[i].id !== +secondList[i].id) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    storageInit(storage) {
+        this.renderFriends(storage.leftList, '.lists-friends__left .friends__list');
+        this.renderFriends(storage.rightList, '.lists-friends__right .friends__list');
+        this.renderUser(storage.user, '#user');
+    }
+
+    renderFriends(data, selector) {
+        const html = this.view.render('item', data);
+
+        document.querySelector(selector).innerHTML = html;
+    }
+
+   renderUser(data, selector) {
+        const html = this.view.render('user', data);
+        document.querySelector(selector).innerHTML = html;
     }
     
 }
